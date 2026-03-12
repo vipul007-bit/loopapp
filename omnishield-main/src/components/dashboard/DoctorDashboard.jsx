@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Users, Calendar, FileText, AlertTriangle, TrendingUp, QrCode, ChevronDown, ChevronUp, Search, Plus, FlaskConical } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { Users, Calendar, FileText, AlertTriangle, TrendingUp, QrCode, ChevronDown, ChevronUp, Search, Plus, FlaskConical, CheckCircle } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext.jsx'
 import { api } from '../../utils/api.js'
@@ -154,8 +154,8 @@ export default function DoctorDashboard() {
               </thead>
               <tbody>
                 {filteredPatients.map(p => (
-                  <>
-                    <tr key={p.id} onClick={() => setExpandedPatient(expandedPatient === p.id ? null : p.id)} className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
+                  <React.Fragment key={p.id}>
+                    <tr onClick={() => setExpandedPatient(expandedPatient === p.id ? null : p.id)} className="border-b border-gray-50 hover:bg-gray-50 transition-colors cursor-pointer">
                       <td className="py-2.5">
                         <div className="font-medium text-gray-800">{p.name}</div>
                         <div className="text-gray-400 text-xs">Age {p.age} · {p.id}</div>
@@ -180,7 +180,7 @@ export default function DoctorDashboard() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
