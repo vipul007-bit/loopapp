@@ -46,266 +46,391 @@ function toCamel(obj) {
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', authRateLimit, async (req, res) => {
-  const { email, password } = req.body;
-  const { rows } = await pool.query(
-    'SELECT * FROM users WHERE email = $1 AND password = $2',
-    [email, password]
-  );
-  if (!rows.length) return res.status(401).json({ message: 'Invalid credentials' });
-  const { password: _, ...safeUser } = toCamel(rows[0]);
-  res.json({ user: safeUser, token: 'mock_jwt_' + Date.now() });
+  try {
+    const { email, password } = req.body;
+    const { rows } = await pool.query(
+      'SELECT * FROM users WHERE email = $1 AND password = $2',
+      [email, password]
+    );
+    if (!rows.length) return res.status(401).json({ message: 'Invalid credentials' });
+    const { password: _, ...safeUser } = toCamel(rows[0]);
+    res.json({ user: safeUser, token: 'mock_jwt_' + Date.now() });
+  } catch (err) {
+    console.error('Login error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/auth/register', authRateLimit, async (req, res) => {
-  const { email, name, role, password } = req.body;
-  const { rows: exists } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-  if (exists.length) return res.status(400).json({ message: 'Email already registered' });
-  const newId = 'U' + Date.now();
-  const { rows } = await pool.query(
-    'INSERT INTO users (id, email, name, role, password, facility) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
-    [newId, email, name, role, password, 'City General Hospital']
-  );
-  const { password: _, ...safeUser } = toCamel(rows[0]);
-  res.json({ user: safeUser, token: 'mock_jwt_' + Date.now() });
+  try {
+    const { email, name, role, password } = req.body;
+    const { rows: exists } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (exists.length) return res.status(400).json({ message: 'Email already registered' });
+    const newId = 'U' + Date.now();
+    const { rows } = await pool.query(
+      'INSERT INTO users (id, email, name, role, password, facility) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+      [newId, email, name, role, password, 'City General Hospital']
+    );
+    const { password: _, ...safeUser } = toCamel(rows[0]);
+    res.json({ user: safeUser, token: 'mock_jwt_' + Date.now() });
+  } catch (err) {
+    console.error('Register error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Patients ──────────────────────────────────────────────────────────────
 app.get('/api/patients', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM patients ORDER BY name');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM patients ORDER BY name');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/patients error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/patients/scan', async (req, res) => {
-  const { patientId, scannedBy, geolocation, timestamp } = req.body;
-  const { rows } = await pool.query('SELECT * FROM patients WHERE id = $1', [patientId]);
-  if (!rows.length) return res.status(404).json({ message: 'Patient not found' });
-  const patient = toCamel(rows[0]);
+  try {
+    const { patientId, scannedBy, geolocation, timestamp } = req.body;
+    const { rows } = await pool.query('SELECT * FROM patients WHERE id = $1', [patientId]);
+    if (!rows.length) return res.status(404).json({ message: 'Patient not found' });
+    const patient = toCamel(rows[0]);
 
-  const [labRows, rxRows, apptRows] = await Promise.all([
-    pool.query('SELECT * FROM lab_tests WHERE patient_id = $1 ORDER BY date DESC', [patientId]),
-    pool.query('SELECT * FROM prescriptions WHERE patient_id = $1 ORDER BY date DESC', [patientId]),
-    pool.query('SELECT * FROM appointments WHERE patient_id = $1 ORDER BY date DESC', [patientId]),
-  ]);
+    const [labRows, rxRows, apptRows] = await Promise.all([
+      pool.query('SELECT * FROM lab_tests WHERE patient_id = $1 ORDER BY date DESC', [patientId]),
+      pool.query('SELECT * FROM prescriptions WHERE patient_id = $1 ORDER BY date DESC', [patientId]),
+      pool.query('SELECT * FROM appointments WHERE patient_id = $1 ORDER BY date DESC', [patientId]),
+    ]);
 
-  patient.labTests = labRows.rows.map(toCamel);
-  patient.prescriptions = rxRows.rows.map(toCamel);
-  patient.appointments = apptRows.rows.map(toCamel);
+    patient.labTests = labRows.rows.map(toCamel);
+    patient.prescriptions = rxRows.rows.map(toCamel);
+    patient.appointments = apptRows.rows.map(toCamel);
 
-  console.log(`Patient scanned: ${patientId} by ${scannedBy} at ${timestamp} (${JSON.stringify(geolocation)})`);
-  broadcast('PATIENT_SCANNED', { patientId, scannedBy, timestamp, geolocation });
-  res.json({ success: true, patient });
+    console.log(`Patient scanned: ${patientId} by ${scannedBy} at ${timestamp} (${JSON.stringify(geolocation)})`);
+    broadcast('PATIENT_SCANNED', { patientId, scannedBy, timestamp, geolocation });
+    res.json({ success: true, patient });
+  } catch (err) {
+    console.error('POST /api/patients/scan error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.get('/api/patients/:id', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM patients WHERE id = $1', [req.params.id]);
-  if (!rows.length) return res.status(404).json({ message: 'Patient not found' });
-  const patient = toCamel(rows[0]);
+  try {
+    const { rows } = await pool.query('SELECT * FROM patients WHERE id = $1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ message: 'Patient not found' });
+    const patient = toCamel(rows[0]);
 
-  const [labRows, rxRows, apptRows, vitalsRows] = await Promise.all([
-    pool.query('SELECT * FROM lab_tests WHERE patient_id = $1 ORDER BY date DESC', [req.params.id]),
-    pool.query('SELECT * FROM prescriptions WHERE patient_id = $1 ORDER BY date DESC', [req.params.id]),
-    pool.query('SELECT * FROM appointments WHERE patient_id = $1 ORDER BY date DESC', [req.params.id]),
-    pool.query('SELECT * FROM vitals WHERE patient_id = $1 ORDER BY timestamp DESC', [req.params.id]),
-  ]);
+    const [labRows, rxRows, apptRows, vitalsRows] = await Promise.all([
+      pool.query('SELECT * FROM lab_tests WHERE patient_id = $1 ORDER BY date DESC', [req.params.id]),
+      pool.query('SELECT * FROM prescriptions WHERE patient_id = $1 ORDER BY date DESC', [req.params.id]),
+      pool.query('SELECT * FROM appointments WHERE patient_id = $1 ORDER BY date DESC', [req.params.id]),
+      pool.query('SELECT * FROM vitals WHERE patient_id = $1 ORDER BY timestamp DESC', [req.params.id]),
+    ]);
 
-  patient.labTests = labRows.rows.map(toCamel);
-  patient.prescriptions = rxRows.rows.map(toCamel);
-  patient.appointments = apptRows.rows.map(toCamel);
-  patient.vitalsHistory = vitalsRows.rows.map(toCamel);
-  res.json(patient);
+    patient.labTests = labRows.rows.map(toCamel);
+    patient.prescriptions = rxRows.rows.map(toCamel);
+    patient.appointments = apptRows.rows.map(toCamel);
+    patient.vitalsHistory = vitalsRows.rows.map(toCamel);
+    res.json(patient);
+  } catch (err) {
+    console.error('GET /api/patients/:id error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Appointments ─────────────────────────────────────────────────────────
 app.get('/api/appointments', async (req, res) => {
-  const { patientId, doctorId } = req.query;
-  let query = 'SELECT * FROM appointments WHERE 1=1';
-  const params = [];
-  if (patientId) { params.push(patientId); query += ` AND patient_id = $${params.length}`; }
-  if (doctorId) { params.push(doctorId); query += ` AND doctor_id = $${params.length}`; }
-  query += ' ORDER BY date DESC';
-  const { rows } = await pool.query(query, params);
-  res.json(rows.map(toCamel));
+  try {
+    const { patientId, doctorId } = req.query;
+    let query = 'SELECT * FROM appointments WHERE 1=1';
+    const params = [];
+    if (patientId) { params.push(patientId); query += ` AND patient_id = $${params.length}`; }
+    if (doctorId) { params.push(doctorId); query += ` AND doctor_id = $${params.length}`; }
+    query += ' ORDER BY date DESC';
+    const { rows } = await pool.query(query, params);
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/appointments error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/appointments', async (req, res) => {
-  const { patientId, patientName, doctorId, doctorName, department, date, time, type } = req.body;
-  const newId = 'A' + Date.now();
-  const { rows } = await pool.query(
-    `INSERT INTO appointments (id, patient_id, patient_name, doctor_id, doctor_name, department, date, time, type, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Pending') RETURNING *`,
-    [newId, patientId, patientName, doctorId, doctorName, department, date, time, type]
-  );
-  const appt = toCamel(rows[0]);
-  broadcast('NEW_APPOINTMENT', appt);
-  res.json(appt);
+  try {
+    const { patientId, patientName, doctorId, doctorName, department, date, time, type } = req.body;
+    const newId = 'A' + Date.now();
+    const { rows } = await pool.query(
+      `INSERT INTO appointments (id, patient_id, patient_name, doctor_id, doctor_name, department, date, time, type, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Pending') RETURNING *`,
+      [newId, patientId, patientName, doctorId, doctorName, department, date, time, type]
+    );
+    const appt = toCamel(rows[0]);
+    broadcast('NEW_APPOINTMENT', appt);
+    res.json(appt);
+  } catch (err) {
+    console.error('POST /api/appointments error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Lab Tests ────────────────────────────────────────────────────────────
 app.get('/api/lab-tests', async (req, res) => {
-  const { status, patientId } = req.query;
-  let query = 'SELECT * FROM lab_tests WHERE 1=1';
-  const params = [];
-  if (status) { params.push(status); query += ` AND status = $${params.length}`; }
-  if (patientId) { params.push(patientId); query += ` AND patient_id = $${params.length}`; }
-  query += ' ORDER BY date DESC';
-  const { rows } = await pool.query(query, params);
-  res.json(rows.map(toCamel));
+  try {
+    const { status, patientId } = req.query;
+    let query = 'SELECT * FROM lab_tests WHERE 1=1';
+    const params = [];
+    if (status) { params.push(status); query += ` AND status = $${params.length}`; }
+    if (patientId) { params.push(patientId); query += ` AND patient_id = $${params.length}`; }
+    query += ' ORDER BY date DESC';
+    const { rows } = await pool.query(query, params);
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/lab-tests error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/lab-tests', async (req, res) => {
-  const { patientId, patientName, test, priority, orderedBy } = req.body;
-  if (!patientId || !test) return res.status(400).json({ message: 'patientId and test are required' });
-  const newId = 'LAB' + Date.now();
-  const timeOrdered = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
-  const date = new Date().toISOString().split('T')[0];
-  const { rows } = await pool.query(
-    `INSERT INTO lab_tests (id, patient_id, patient_name, test, ordered_by, priority, status, time_ordered, date, results)
-     VALUES ($1,$2,$3,$4,$5,$6,'Pending',$7,$8,NULL) RETURNING *`,
-    [newId, patientId, patientName || 'Unknown', test, orderedBy || 'Unknown Doctor', priority || 'Routine', timeOrdered, date]
-  );
-  const labTest = toCamel(rows[0]);
-  broadcast('NEW_LAB_TEST', labTest);
-  res.json(labTest);
+  try {
+    const { patientId, patientName, test, priority, orderedBy } = req.body;
+    if (!patientId || !test) return res.status(400).json({ message: 'patientId and test are required' });
+    const newId = 'LAB' + Date.now();
+    const timeOrdered = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    const date = new Date().toISOString().split('T')[0];
+    const { rows } = await pool.query(
+      `INSERT INTO lab_tests (id, patient_id, patient_name, test, ordered_by, priority, status, time_ordered, date, results)
+       VALUES ($1,$2,$3,$4,$5,$6,'Pending',$7,$8,NULL) RETURNING *`,
+      [newId, patientId, patientName || 'Unknown', test, orderedBy || 'Unknown Doctor', priority || 'Routine', timeOrdered, date]
+    );
+    const labTest = toCamel(rows[0]);
+    broadcast('NEW_LAB_TEST', labTest);
+    res.json(labTest);
+  } catch (err) {
+    console.error('POST /api/lab-tests error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/lab-tests/:id/results', async (req, res) => {
-  const { rows: existing } = await pool.query('SELECT id FROM lab_tests WHERE id = $1', [req.params.id]);
-  if (!existing.length) return res.status(404).json({ message: 'Test not found' });
-  const { rows } = await pool.query(
-    `UPDATE lab_tests SET results = $1, status = 'Complete' WHERE id = $2 RETURNING *`,
-    [JSON.stringify(req.body), req.params.id]
-  );
-  const labTest = toCamel(rows[0]);
-  broadcast('LAB_RESULTS_READY', labTest);
-  res.json(labTest);
+  try {
+    const { rows: existing } = await pool.query('SELECT id FROM lab_tests WHERE id = $1', [req.params.id]);
+    if (!existing.length) return res.status(404).json({ message: 'Test not found' });
+    const { rows } = await pool.query(
+      `UPDATE lab_tests SET results = $1, status = 'Complete' WHERE id = $2 RETURNING *`,
+      [JSON.stringify(req.body), req.params.id]
+    );
+    const labTest = toCamel(rows[0]);
+    broadcast('LAB_RESULTS_READY', labTest);
+    res.json(labTest);
+  } catch (err) {
+    console.error('POST /api/lab-tests/:id/results error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Vitals ───────────────────────────────────────────────────────────────
 app.get('/api/vitals/:patientId', async (req, res) => {
-  const { rows } = await pool.query(
-    'SELECT * FROM vitals WHERE patient_id = $1 ORDER BY timestamp DESC',
-    [req.params.patientId]
-  );
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM vitals WHERE patient_id = $1 ORDER BY timestamp DESC',
+      [req.params.patientId]
+    );
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/vitals/:patientId error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/vitals', async (req, res) => {
-  const { patientId, bp, hr, spo2, temp, rr, pain, notes, nurse } = req.body;
-  const newId = 'V' + Date.now();
-  const timestamp = new Date().toISOString();
-  const { rows } = await pool.query(
-    `INSERT INTO vitals (id, patient_id, bp, hr, spo2, temp, rr, pain, notes, timestamp, nurse)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
-    [newId, patientId, bp, hr, spo2, temp, rr, pain, notes, timestamp, nurse]
-  );
-  const vital = toCamel(rows[0]);
-  broadcast('NEW_VITALS', vital);
-  res.json(vital);
+  try {
+    const { patientId, bp, hr, spo2, temp, rr, pain, notes, nurse } = req.body;
+    const newId = 'V' + Date.now();
+    const timestamp = new Date().toISOString();
+    const { rows } = await pool.query(
+      `INSERT INTO vitals (id, patient_id, bp, hr, spo2, temp, rr, pain, notes, timestamp, nurse)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [newId, patientId, bp, hr, spo2, temp, rr, pain, notes, timestamp, nurse]
+    );
+    const vital = toCamel(rows[0]);
+    broadcast('NEW_VITALS', vital);
+    res.json(vital);
+  } catch (err) {
+    console.error('POST /api/vitals error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Prescriptions ────────────────────────────────────────────────────────
 app.get('/api/prescriptions', async (req, res) => {
-  const { status, patientId } = req.query;
-  let query = 'SELECT * FROM prescriptions WHERE 1=1';
-  const params = [];
-  if (status) { params.push(status); query += ` AND status = $${params.length}`; }
-  if (patientId) { params.push(patientId); query += ` AND patient_id = $${params.length}`; }
-  query += ' ORDER BY date DESC';
-  const { rows } = await pool.query(query, params);
-  res.json(rows.map(toCamel));
+  try {
+    const { status, patientId } = req.query;
+    let query = 'SELECT * FROM prescriptions WHERE 1=1';
+    const params = [];
+    if (status) { params.push(status); query += ` AND status = $${params.length}`; }
+    if (patientId) { params.push(patientId); query += ` AND patient_id = $${params.length}`; }
+    query += ' ORDER BY date DESC';
+    const { rows } = await pool.query(query, params);
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/prescriptions error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/prescriptions', async (req, res) => {
-  const { patientId, patientName, doctorId, doctorName, drug, dosage, qty } = req.body;
-  const newId = 'RX' + Date.now();
-  const date = new Date().toISOString().split('T')[0];
-  const { rows } = await pool.query(
-    `INSERT INTO prescriptions (id, patient_id, patient_name, doctor_id, doctor_name, drug, dosage, qty, status, date)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Pending',$9) RETURNING *`,
-    [newId, patientId, patientName, doctorId, doctorName, drug, dosage, qty, date]
-  );
-  const rx = toCamel(rows[0]);
-  broadcast('NEW_PRESCRIPTION', rx);
-  res.json(rx);
+  try {
+    const { patientId, patientName, doctorId, doctorName, drug, dosage, qty } = req.body;
+    const newId = 'RX' + Date.now();
+    const date = new Date().toISOString().split('T')[0];
+    const { rows } = await pool.query(
+      `INSERT INTO prescriptions (id, patient_id, patient_name, doctor_id, doctor_name, drug, dosage, qty, status, date)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Pending',$9) RETURNING *`,
+      [newId, patientId, patientName, doctorId, doctorName, drug, dosage, qty, date]
+    );
+    const rx = toCamel(rows[0]);
+    broadcast('NEW_PRESCRIPTION', rx);
+    res.json(rx);
+  } catch (err) {
+    console.error('POST /api/prescriptions error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.patch('/api/prescriptions/:id/dispense', async (req, res) => {
-  const { rows: existing } = await pool.query('SELECT id FROM prescriptions WHERE id = $1', [req.params.id]);
-  if (!existing.length) return res.status(404).json({ message: 'Prescription not found' });
-  const dispensedAt = new Date().toISOString();
-  const { rows } = await pool.query(
-    `UPDATE prescriptions SET status = 'Dispensed', dispensed_at = $1 WHERE id = $2 RETURNING *`,
-    [dispensedAt, req.params.id]
-  );
-  const rx = toCamel(rows[0]);
-  broadcast('PRESCRIPTION_DISPENSED', rx);
-  res.json(rx);
+  try {
+    const { rows: existing } = await pool.query('SELECT id FROM prescriptions WHERE id = $1', [req.params.id]);
+    if (!existing.length) return res.status(404).json({ message: 'Prescription not found' });
+    const dispensedAt = new Date().toISOString();
+    const { rows } = await pool.query(
+      `UPDATE prescriptions SET status = 'Dispensed', dispensed_at = $1 WHERE id = $2 RETURNING *`,
+      [dispensedAt, req.params.id]
+    );
+    const rx = toCamel(rows[0]);
+    broadcast('PRESCRIPTION_DISPENSED', rx);
+    res.json(rx);
+  } catch (err) {
+    console.error('PATCH /api/prescriptions/:id/dispense error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // Backward-compatible GET alias for dispense (deprecated — prefer PATCH above)
 app.get('/api/prescriptions/:id/dispense', async (req, res) => {
-  const { rows: existing } = await pool.query('SELECT id FROM prescriptions WHERE id = $1', [req.params.id]);
-  if (!existing.length) return res.status(404).json({ message: 'Prescription not found' });
-  const dispensedAt = new Date().toISOString();
-  const { rows } = await pool.query(
-    `UPDATE prescriptions SET status = 'Dispensed', dispensed_at = $1 WHERE id = $2 RETURNING *`,
-    [dispensedAt, req.params.id]
-  );
-  const rx = toCamel(rows[0]);
-  broadcast('PRESCRIPTION_DISPENSED', rx);
-  res.json(rx);
+  try {
+    const { rows: existing } = await pool.query('SELECT id FROM prescriptions WHERE id = $1', [req.params.id]);
+    if (!existing.length) return res.status(404).json({ message: 'Prescription not found' });
+    const dispensedAt = new Date().toISOString();
+    const { rows } = await pool.query(
+      `UPDATE prescriptions SET status = 'Dispensed', dispensed_at = $1 WHERE id = $2 RETURNING *`,
+      [dispensedAt, req.params.id]
+    );
+    const rx = toCamel(rows[0]);
+    broadcast('PRESCRIPTION_DISPENSED', rx);
+    res.json(rx);
+  } catch (err) {
+    console.error('GET /api/prescriptions/:id/dispense error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Inventory ────────────────────────────────────────────────────────────
 app.get('/api/inventory', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM inventory ORDER BY drug');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM inventory ORDER BY drug');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/inventory error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.post('/api/inventory/alert', async (req, res) => {
-  const { drugId } = req.body;
-  const { rows } = await pool.query('SELECT * FROM inventory WHERE id = $1', [drugId]);
-  if (!rows.length) return res.status(404).json({ message: 'Item not found' });
-  res.json({ success: true, message: `Restock request sent for ${rows[0].drug}` });
+  try {
+    const { drugId } = req.body;
+    const { rows } = await pool.query('SELECT * FROM inventory WHERE id = $1', [drugId]);
+    if (!rows.length) return res.status(404).json({ message: 'Item not found' });
+    res.json({ success: true, message: `Restock request sent for ${rows[0].drug}` });
+  } catch (err) {
+    console.error('POST /api/inventory/alert error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Staff ────────────────────────────────────────────────────────────────
 app.get('/api/staff', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM staff');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM staff');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/staff error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Beds ─────────────────────────────────────────────────────────────────
 app.get('/api/beds', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM beds');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM beds');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/beds error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Compliance ───────────────────────────────────────────────────────────
 app.get('/api/compliance', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM compliance');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM compliance');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/compliance error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Surveillance ─────────────────────────────────────────────────────────
 app.get('/api/surveillance', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM surveillance_cases');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM surveillance_cases');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/surveillance error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.get('/api/surveillance/cases', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM surveillance_cases');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM surveillance_cases');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/surveillance/cases error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.get('/api/surveillance/hotspots', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM hotspots');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM hotspots');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/surveillance/hotspots error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.get('/api/hotspots', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM hotspots');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM hotspots');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/hotspots error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.get('/api/surveillance/forecast', (req, res) => {
@@ -343,22 +468,37 @@ app.post('/api/chatbot', (req, res) => {
 
 // ─── Notifications ────────────────────────────────────────────────────────
 app.get('/api/notifications', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM notifications');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM notifications');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/notifications error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 app.get('/api/notifications/:userId', async (req, res) => {
-  const { rows } = await pool.query(
-    'SELECT * FROM notifications WHERE user_id = $1',
-    [req.params.userId]
-  );
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM notifications WHERE user_id = $1',
+      [req.params.userId]
+    );
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/notifications/:userId error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 // ─── Drug Interactions ────────────────────────────────────────────────────
 app.get('/api/drug-interactions', async (req, res) => {
-  const { rows } = await pool.query('SELECT * FROM drug_interactions');
-  res.json(rows.map(toCamel));
+  try {
+    const { rows } = await pool.query('SELECT * FROM drug_interactions');
+    res.json(rows.map(toCamel));
+  } catch (err) {
+    console.error('GET /api/drug-interactions error:', err.message);
+    res.status(500).json({ message: 'Internal server error' });
+  }
 });
 
 server.listen(PORT, '0.0.0.0', () => console.log(`OmniShield server running on port ${PORT}`));

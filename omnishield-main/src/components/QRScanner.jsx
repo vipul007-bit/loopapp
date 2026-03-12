@@ -42,7 +42,11 @@ export default function QRScanner({ onPatientScanned }) {
 
   async function stopScanner() {
     if (html5QrRef.current) {
-      await html5QrRef.current.stop().catch(() => {});
+      try {
+        await html5QrRef.current.stop();
+      } catch (_) {
+        // ignore "scanner is not running or paused" errors
+      }
     }
     setScanning(false);
   }
